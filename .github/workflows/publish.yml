@@ -114,8 +114,12 @@ jobs:
 
           if [ "${{ needs.detect.outputs.is_video }}" = "true" ]; then
             BASE="${FILE%.*}"
-            [ -f "${BASE}.gif"  ] && gh release upload media "${BASE}.gif"  --clobber
-            [ -f "${BASE}.webp" ] && gh release upload media "${BASE}.webp" --clobber
+            WEBP="${BASE}.webp"
+            [ -f "${BASE}.gif" ] && gh release upload media "${BASE}.gif" --clobber
+            if [ -f "$WEBP" ]; then
+              gh release upload media "$WEBP" --clobber
+              URL="https://github.com/${{ github.repository }}/releases/download/media/$(basename $WEBP)"
+            fi
           fi
 
           python3 - captures/index.json "$FILENAME" "$URL" <<'PYEOF'

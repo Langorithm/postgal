@@ -315,7 +315,7 @@
             const fileExt  = f => f.slice(f.lastIndexOf('.')).toLowerCase();
             const isVideo  = f => VIDEO_EXTS.has(fileExt(f));
             const safe     = s => s.replace(/</g, '&lt;').replace(/>/g, '&gt;');
-            const thumbTag = (url, file) => isVideo(file)
+            const thumbTag = (url, file) => isVideo(url)
                 ? `<video src="${url}" muted loop playsinline></video>`
                 : `<img src="${url}" alt="" loading="lazy">`;
 
@@ -326,7 +326,7 @@
             const lbDate    = document.getElementById('lb-date');
 
             function openLightbox({ url, file, caption, timestamp }) {
-                lbMedia.innerHTML = isVideo(file)
+                lbMedia.innerHTML = isVideo(url)
                     ? `<video src="${url}" controls loop playsinline autoplay></video>`
                     : `<img src="${url}" alt="${safe(caption || '')}">`;
                 lbCaption.textContent = caption || file;
