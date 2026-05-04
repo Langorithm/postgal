@@ -51,4 +51,5 @@ git add "captures/$DEST_NAME" "$INDEX"
 git commit -m "${CAPTION:-Gamedev update $TIMESTAMP}"
 git push
 
-echo "Pushed. GitHub Actions will post to socials and rebuild the site."
+rm "$DEST"
+echo "Pushed and cleaned up local copy. GitHub Actions will upload to releases, post to socials, and update the gallery."

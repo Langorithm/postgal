@@ -77,13 +77,81 @@ jobs:
             captures/*.gif
             captures/*.webp
 
-  # ── 3. Post to all socials ───────────────────────────────────────────────
-  publish:
+  # ── 3. Upload to GitHub Releases, update index.json, remove from repo ───
+  release-upload:
     needs: [detect, convert]
     if: |
       always() &&
       needs.detect.result == 'success' &&
       needs.detect.outputs.has_file == 'true'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    outputs:
+      url: ${{ steps.upload.outputs.url }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/download-artifact@v4
+        if: needs.detect.outputs.is_video == 'true' && needs.convert.result == 'success'
+        with:
+          name: converted
+          path: captures/
+
+      - name: Ensure media release exists
+        run: gh release view media || gh release create media --title "Media" --notes ""
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - id: upload
+        name: Upload assets and update index.json
+        run: |
+          FILE="${{ needs.detect.outputs.file }}"
+          FILENAME=$(basename "$FILE")
+
+          gh release upload media "$FILE" --clobber
+          URL="https://github.com/${{ github.repository }}/releases/download/media/${FILENAME}"
+
+          if [ "${{ needs.detect.outputs.is_video }}" = "true" ]; then
+            BASE="${FILE%.*}"
+            [ -f "${BASE}.gif"  ] && gh release upload media "${BASE}.gif"  --clobber
+            [ -f "${BASE}.webp" ] && gh release upload media "${BASE}.webp" --clobber
+          fi
+
+          python3 - captures/index.json "$FILENAME" "$URL" <<'PYEOF'
+          import json, sys
+          path, filename, url = sys.argv[1], sys.argv[2], sys.argv[3]
+          with open(path) as f:
+              data = json.load(f)
+          for entry in data:
+              if entry['file'] == filename:
+                  entry['url'] = url
+                  break
+          with open(path, 'w') as f:
+              json.dump(data, f, indent=2)
+          PYEOF
+
+          echo "url=$URL" >> "$GITHUB_OUTPUT"
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Remove capture from repo
+        run: |
+          git config user.name  "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git rm "${{ needs.detect.outputs.file }}"
+          git add captures/index.json
+          git commit -m "Move $(basename ${{ needs.detect.outputs.file }}) to releases [skip ci]"
+          git push
+
+  # ── 4. Post to all socials ───────────────────────────────────────────────
+  publish:
+    needs: [detect, convert, release-upload]
+    if: |
+      always() &&
+      needs.detect.result == 'success' &&
+      needs.detect.outputs.has_file == 'true' &&
+      needs.release-upload.result == 'success'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
