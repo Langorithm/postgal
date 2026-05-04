@@ -5,9 +5,10 @@ A minimal pipeline for sharing gamedev progress. Run one command — it commits 
 ## How it works
 
 1. You run `post.sh` with a file and caption
-2. The file is copied to `captures/`, committed, and pushed
-3. GitHub Actions picks up the push and fans out to all configured platforms
-4. Your GitHub Pages gallery updates automatically
+2. The file is committed and pushed, then deleted locally
+3. GitHub Actions uploads it to a GitHub Release (permanent media storage), removes it from the repo, and updates `captures/index.json` with the asset URL
+4. Actions fans out to all configured social platforms
+5. Your GitHub Pages gallery updates automatically
 
 ## Requirements
 
@@ -103,7 +104,7 @@ Install dependencies and run directly:
 
 ```sh
 pip install -r publish/requirements.txt
-python publish/publish.py captures/yourfile.png "Your caption"
+python publish/publish.py ~/Desktop/screenshot.png "Your caption"
 ```
 
 To preview the gallery locally:
@@ -118,8 +119,8 @@ python3 -m http.server
 ```
 post.sh           — local entry point
 index.html        — gallery (static, no build step)
-captures/         — your screenshots and videos
-  index.json      — metadata index (managed by post.sh)
+captures/
+  index.json      — metadata index with release asset URLs (managed by post.sh + Actions)
 publish/          — social posting engine (runs on GitHub Actions)
   publish.py
   modules/        — one file per platform
