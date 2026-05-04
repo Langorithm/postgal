@@ -109,17 +109,14 @@ jobs:
           FILE="${{ needs.detect.outputs.file }}"
           FILENAME=$(basename "$FILE")
 
-          gh release upload media "$FILE" --clobber
-          URL="https://github.com/${{ github.repository }}/releases/download/media/${FILENAME}"
-
           if [ "${{ needs.detect.outputs.is_video }}" = "true" ]; then
             BASE="${FILE%.*}"
-            WEBP="${BASE}.webp"
-            [ -f "${BASE}.gif" ] && gh release upload media "${BASE}.gif" --clobber
-            if [ -f "$WEBP" ]; then
-              gh release upload media "$WEBP" --clobber
-              URL="https://github.com/${{ github.repository }}/releases/download/media/$(basename $WEBP)"
-            fi
+            [ -f "${BASE}.gif"  ] && gh release upload media "${BASE}.gif"  --clobber
+            [ -f "${BASE}.webp" ] && gh release upload media "${BASE}.webp" --clobber
+            URL="https://github.com/${{ github.repository }}/releases/download/media/$(basename ${BASE}.webp)"
+          else
+            gh release upload media "$FILE" --clobber
+            URL="https://github.com/${{ github.repository }}/releases/download/media/${FILENAME}"
           fi
 
           python3 - captures/index.json "$FILENAME" "$URL" <<'PYEOF'
