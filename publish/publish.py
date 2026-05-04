@@ -8,15 +8,19 @@ import importlib
 import os
 import sys
 import traceback
+from pathlib import Path
 
-# Modules to attempt, in order. Add "twitter" here once implemented.
+# Load .env from repo root when running locally
+_env = Path(__file__).parent.parent / ".env"
+if _env.exists():
+    from dotenv import load_dotenv
+    load_dotenv(_env)
+
 MODULES = ["bluesky", "telegram", "tumblr", "reddit"]
 
-# Env vars that must all be present for a module to run.
-# If any are missing the module is skipped (not failed).
 REQUIRED_ENV: dict[str, list[str]] = {
     "bluesky": ["BLUESKY_HANDLE", "BLUESKY_APP_PASSWORD"],
-    "telegram": ["TELEGRAM_BOT_TOKEN"],          # needs at least the token; targets checked inside module
+    "telegram": ["TELEGRAM_BOT_TOKEN"],
     "tumblr": [
         "TUMBLR_CONSUMER_KEY", "TUMBLR_CONSUMER_SECRET",
         "TUMBLR_OAUTH_TOKEN", "TUMBLR_OAUTH_SECRET", "TUMBLR_BLOG_NAME",
