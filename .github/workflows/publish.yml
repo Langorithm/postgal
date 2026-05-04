@@ -1,0 +1,147 @@
+name: Publish Progress
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "captures/**"
+      - "!captures/index.json"
+      - "!captures/.gitkeep"
+
+jobs:
+  # ── 1. Detect which file was just added ──────────────────────────────────
+  detect:
+    runs-on: ubuntu-latest
+    outputs:
+      has_file: ${{ steps.detect.outputs.has_file }}
+      file: ${{ steps.detect.outputs.file }}
+      caption: ${{ steps.detect.outputs.caption }}
+      is_video: ${{ steps.detect.outputs.is_video }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 2
+
+      - id: detect
+        run: |
+          FILE=$(git diff --name-only --diff-filter=A HEAD~1 HEAD -- captures/ \
+            | grep -viE '(index\.json|\.gitkeep)' | head -1)
+
+          if [ -z "$FILE" ]; then
+            echo "has_file=false" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+
+          CAPTION=$(git log -1 --pretty=%s)
+          echo "$FILE" | grep -qiE '\.(mp4|mov|avi|mkv|webm)$' \
+            && IS_VIDEO=true || IS_VIDEO=false
+
+          echo "has_file=true"   >> "$GITHUB_OUTPUT"
+          echo "file=$FILE"      >> "$GITHUB_OUTPUT"
+          echo "caption=$CAPTION">> "$GITHUB_OUTPUT"
+          echo "is_video=$IS_VIDEO" >> "$GITHUB_OUTPUT"
+
+  # ── 2. Convert video → GIF + WebP (skipped for images) ──────────────────
+  convert:
+    needs: detect
+    if: needs.detect.outputs.has_file == 'true' && needs.detect.outputs.is_video == 'true'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - run: sudo apt-get install -y ffmpeg
+
+      - name: Convert
+        run: |
+          FILE="${{ needs.detect.outputs.file }}"
+          BASE="${FILE%.*}"
+
+          # Palette-optimised GIF at 480 px wide, 15 fps
+          ffmpeg -i "$FILE" \
+            -vf "fps=15,scale=480:-1:flags=lanczos,palettegen" \
+            /tmp/palette.png
+          ffmpeg -i "$FILE" -i /tmp/palette.png \
+            -vf "fps=15,scale=480:-1:flags=lanczos,paletteuse" \
+            "${BASE}.gif"
+
+          # Animated WebP
+          ffmpeg -i "$FILE" \
+            -vcodec libwebp -lossless 0 -compression_level 6 \
+            -q:v 70 -loop 0 -preset picture -an -vsync 0 \
+            "${BASE}.webp"
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: converted
+          path: |
+            captures/*.gif
+            captures/*.webp
+
+  # ── 3. Post to all socials ───────────────────────────────────────────────
+  publish:
+    needs: [detect, convert]
+    if: |
+      always() &&
+      needs.detect.result == 'success' &&
+      needs.detect.outputs.has_file == 'true'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/download-artifact@v4
+        if: needs.detect.outputs.is_video == 'true' && needs.convert.result == 'success'
+        with:
+          name: converted
+          path: captures/
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - run: pip install -r .github/scripts/requirements.txt
+
+      - name: Post to socials
+        working-directory: .github/scripts
+        env:
+          BLUESKY_HANDLE:         ${{ secrets.BLUESKY_HANDLE }}
+          BLUESKY_APP_PASSWORD:   ${{ secrets.BLUESKY_APP_PASSWORD }}
+          TELEGRAM_BOT_TOKEN:     ${{ secrets.TELEGRAM_BOT_TOKEN }}
+          TELEGRAM_CHANNEL_ID:    ${{ secrets.TELEGRAM_CHANNEL_ID }}
+          TELEGRAM_GROUP_ID:      ${{ secrets.TELEGRAM_GROUP_ID }}
+          TUMBLR_CONSUMER_KEY:    ${{ secrets.TUMBLR_CONSUMER_KEY }}
+          TUMBLR_CONSUMER_SECRET: ${{ secrets.TUMBLR_CONSUMER_SECRET }}
+          TUMBLR_OAUTH_TOKEN:     ${{ secrets.TUMBLR_OAUTH_TOKEN }}
+          TUMBLR_OAUTH_SECRET:    ${{ secrets.TUMBLR_OAUTH_SECRET }}
+          TUMBLR_BLOG_NAME:       ${{ secrets.TUMBLR_BLOG_NAME }}
+          REDDIT_CLIENT_ID:       ${{ secrets.REDDIT_CLIENT_ID }}
+          REDDIT_CLIENT_SECRET:   ${{ secrets.REDDIT_CLIENT_SECRET }}
+          REDDIT_USERNAME:        ${{ secrets.REDDIT_USERNAME }}
+          REDDIT_PASSWORD:        ${{ secrets.REDDIT_PASSWORD }}
+          REDDIT_SUBREDDIT:       ${{ secrets.REDDIT_SUBREDDIT }}
+        run: |
+          FILE="../../${{ needs.detect.outputs.file }}"
+          # For videos prefer the GIF conversion if available
+          if [ "${{ needs.detect.outputs.is_video }}" = "true" ]; then
+            BASE="../../${FILE%.*}"
+            [ -f "${BASE}.gif" ] && FILE="${BASE}.gif"
+          fi
+          python publish.py "$FILE" "${{ needs.detect.outputs.caption }}"
+
+  # ── 4. Rebuild GitHub Pages gallery ─────────────────────────────────────
+  build-site:
+    needs: detect
+    if: needs.detect.outputs.has_file == 'true'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - run: python .github/scripts/build_site.py
+
+      - uses: peaceiris/actions-gh-pages@v4
+        with:
+          github_token: ${{ secrets.GITHUB_TOKEN }}
+          publish_dir: ./site
