@@ -41,7 +41,7 @@ jobs:
           echo "caption=$CAPTION">> "$GITHUB_OUTPUT"
           echo "is_video=$IS_VIDEO" >> "$GITHUB_OUTPUT"
 
-  # ── 2. Convert video → GIF + WebP (skipped for images) ──────────────────
+  # ── 2. Convert video → WebP for gallery (skipped for images) ─────────────
   convert:
     needs: detect
     if: needs.detect.outputs.has_file == 'true' && needs.detect.outputs.is_video == 'true'
@@ -51,20 +51,11 @@ jobs:
 
       - run: sudo apt-get install -y ffmpeg
 
-      - name: Convert
+      - name: Convert to animated WebP
         run: |
           FILE="${{ needs.detect.outputs.file }}"
           BASE="${FILE%.*}"
 
-          # Palette-optimised GIF at 480 px wide, 15 fps
-          ffmpeg -i "$FILE" \
-            -vf "fps=15,scale=480:-1:flags=lanczos,palettegen" \
-            /tmp/palette.png
-          ffmpeg -i "$FILE" -i /tmp/palette.png \
-            -filter_complex "fps=15,scale=480:-1:flags=lanczos[x];[x][1:v]paletteuse" \
-            "${BASE}.gif"
-
-          # Animated WebP
           ffmpeg -i "$FILE" \
             -vcodec libwebp -lossless 0 -compression_level 6 \
             -q:v 70 -loop 0 -preset picture -an -vsync 0 \
@@ -73,11 +64,9 @@ jobs:
       - uses: actions/upload-artifact@v4
         with:
           name: converted
-          path: |
-            captures/*.gif
-            captures/*.webp
+          path: captures/*.webp
 
-  # ── 3. Upload to GitHub Releases, update index.json, remove from repo ───
+  # ── 3. Upload to GitHub Releases, update index.json, remove from repo ────
   release-upload:
     needs: [detect, convert]
     if: |
@@ -110,10 +99,9 @@ jobs:
           FILENAME=$(basename "$FILE")
 
           if [ "${{ needs.detect.outputs.is_video }}" = "true" ]; then
-            BASE="${FILE%.*}"
-            [ -f "${BASE}.gif"  ] && gh release upload media "${BASE}.gif"  --clobber
-            [ -f "${BASE}.webp" ] && gh release upload media "${BASE}.webp" --clobber
-            URL="https://github.com/${{ github.repository }}/releases/download/media/$(basename ${BASE}.webp)"
+            WEBP="${FILE%.*}.webp"
+            gh release upload media "$WEBP" --clobber
+            URL="https://github.com/${{ github.repository }}/releases/download/media/$(basename $WEBP)"
           else
             gh release upload media "$FILE" --clobber
             URL="https://github.com/${{ github.repository }}/releases/download/media/${FILENAME}"
@@ -157,12 +145,6 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - uses: actions/download-artifact@v4
-        if: needs.detect.outputs.is_video == 'true' && needs.convert.result == 'success'
-        with:
-          name: converted
-          path: captures/
-
       - uses: actions/setup-python@v5
         with:
           python-version: "3.12"
@@ -188,11 +170,4 @@ jobs:
           REDDIT_PASSWORD:        ${{ secrets.REDDIT_PASSWORD }}
           REDDIT_SUBREDDIT:       ${{ secrets.REDDIT_SUBREDDIT }}
         run: |
-          FILE="../${{ needs.detect.outputs.file }}"
-          # For videos prefer the GIF conversion if available
-          if [ "${{ needs.detect.outputs.is_video }}" = "true" ]; then
-            BASE="../${FILE%.*}"
-            [ -f "${BASE}.gif" ] && FILE="${BASE}.gif"
-          fi
-          python publish.py "$FILE" "${{ needs.detect.outputs.caption }}"
-
+          python publish.py "../${{ needs.detect.outputs.file }}" "${{ needs.detect.outputs.caption }}"
