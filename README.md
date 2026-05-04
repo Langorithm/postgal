@@ -61,7 +61,15 @@ To find chat IDs: add the bot to your channel/group, send a message, then open `
 | `TUMBLR_OAUTH_SECRET` | OAuth secret |
 | `TUMBLR_BLOG_NAME` | Your blog name, e.g. `yourname` |
 
-Register an app at [tumblr.com/oauth/apps](https://www.tumblr.com/oauth/apps).
+Register an app at [tumblr.com/oauth/apps](https://www.tumblr.com/oauth/apps). Use `https://localhost` for the callback URL fields.
+
+To get your OAuth token and secret, run the included helper after registering:
+
+```sh
+python3 tumblr_auth.py
+```
+
+It will walk you through the browser authorisation flow and print the four values to add to `.env` and GitHub Secrets.
 
 #### Reddit
 | Secret | Value |
@@ -118,6 +126,7 @@ python3 -m http.server
 
 ```
 post.sh           — local entry point
+tumblr_auth.py    — one-time OAuth token helper
 index.html        — gallery (static, no build step)
 captures/
   index.json      — metadata index with release asset URLs (managed by post.sh + Actions)
